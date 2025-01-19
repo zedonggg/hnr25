@@ -1,6 +1,12 @@
 'use client';
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { TbAlarm } from "react-icons/tb";
+import axios from 'axios';
+import { motion } from 'motion/react';
+
+
+
+
 
 export default function Home() {
   const [hour, setHour] = useState("");
@@ -8,12 +14,29 @@ export default function Home() {
   const [ampm, setAmpm] = useState("");
   const [alarmTime, setAlarmTime] = useState("");
   const [currentTime, setCurrentTime] = useState("");
-  const [alarmTriggered, setAlarmTriggered] = useState(false); // To track if alarm has been triggered
+  const [alarmTriggered, setAlarmTriggered] = useState(false); 
+  const [isPopupVisible, setIsPopupVisible] = useState(false); 
+  const alarmAudioRef = useRef(null);
 
-  // Reference to the audio element
-  const alarmAudio = new Audio("hnr25_alarm.mp3");
+  // Initialize alarm audio only once
+  useEffect(() => {
+    alarmAudioRef.current = new Audio("/alarm2.mp3");
+    alarmAudioRef.current.loop = false; // Prevent infinite looping
 
-  
+    const now = new Date();
+  let hours = now.getHours();
+  const minutes = now.getMinutes();
+  const isAM = hours < 12;
+
+  // Convert hours to 12-hour format
+  const formattedHour = hours % 12 || 12;
+  const formattedMinute = minutes.toString().padStart(2, "0");
+  const formattedAmpm = isAM ? "AM" : "PM";
+
+  setHour(formattedHour.toString()); // Default hour
+  setMinute(formattedMinute); // Default minute
+  setAmpm(formattedAmpm); // Default AM/PM
+  }, []);
 
   // Update current time to system time
   useEffect(() => {
@@ -24,7 +47,6 @@ export default function Home() {
       const seconds = now.getSeconds();
       const isAM = hours < 12;
 
-      // Format time into 12-hour format with AM/PM
       const formattedTime = `${hours % 12 || 12}:${minutes
         .toString()
         .padStart(2, "0")}:${seconds.toString().padStart(2, "0")} ${
@@ -35,7 +57,7 @@ export default function Home() {
 
     const interval = setInterval(updateTime, 1000);
     updateTime(); // Initial update
-    return () => clearInterval(interval); // Cleanup on component unmount
+    return () => clearInterval(interval);
   }, []);
 
   // Function to handle alarm time
@@ -49,26 +71,29 @@ export default function Home() {
     minute = parseInt(minute);
 
     if (ampm === "PM" && hourPart !== 12) {
-      hourPart += 12; // Convert PM to 24-hour format
+      hourPart += 12; 
     } else if (ampm === "AM" && hourPart === 12) {
-      hourPart = 0; // Convert 12 AM to 0 hours (midnight)
+      hourPart = 0;
     }
 
     alarmDate.setHours(hourPart);
     alarmDate.setMinutes(minute);
-    alarmDate.setSeconds(0); // Trigger at the exact minute
+    alarmDate.setSeconds(0);
 
-    // Check every second if the alarm time is reached
     const interval = setInterval(() => {
       const now = new Date();
       if (now >= alarmDate && !alarmTriggered) {
-        setAlarmTriggered(true); // Alarm has been triggered
-        alarmAudio.play(); // Play the alarm sound
-        clearInterval(interval); // Stop checking once the alarm triggers
+        setAlarmTriggered(true);
+        if (alarmAudioRef.current) {
+          alarmAudioRef.current.play(); // Play alarm
+        }
+        setIsPopupVisible(true); // Show popup
+        startAudioProcessing();
+        clearInterval(interval);
       }
     }, 1000);
 
-    return () => clearInterval(interval); // Cleanup on component unmount
+    return () => clearInterval(interval);
   }, [alarmTime, alarmTriggered]);
 
   const handleSetAlarm = () => {
@@ -81,6 +106,31 @@ export default function Home() {
     }
   };
 
+  const startAudioProcessing = async () => {
+    try {
+      const response = await axios.get('http://127.0.0.1:8000/audio/');
+      alert(`Audio processing result: ${response.data.inferred_class}`);
+      stopAlarm(); // Stop alarm after processing audio
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Something went wrong while processing the audio.');
+    }
+  };
+
+  const stopAlarm = () => {
+    if (alarmAudioRef.current) {
+      alarmAudioRef.current.pause(); // Stop audio
+      alarmAudioRef.current.currentTime = 0; // Reset audio
+    }
+    setIsPopupVisible(false); // Hide popup
+    setAlarmTriggered(false); // Reset alarm state
+    setAlarmTime(""); // Reset alarm time
+    setHour(""); // Reset hour
+    setMinute(""); // Reset minute
+    setAmpm(""); // Reset AM/PM
+  };
+  
+
   return (
     <div className="bg-[#f5f5f5] w-screen h-screen">
       <div className="bg-[url('../woof.png')] w-screen h-screen bg-repeat bg-[length:100px_100px] animate-scroll">
@@ -92,7 +142,7 @@ export default function Home() {
                 Ring Ring Bark Bark 🐶
               </h1>
               <div className="wrapper">
-                <h2 className="text-7xl text-indigo-500 font-semibold">{currentTime}</h2>
+                <h2 className="text-8xl inline text-amber-500 font-semibold">{currentTime}</h2>
                 <div className="content grid grid-cols-3 gap-6 mt-6 text-black">
                   {/* Hour Selection */}
                   <div className="column flex flex-col items-center text-black">
@@ -159,17 +209,55 @@ export default function Home() {
                     </select>
                   </div>
                 </div>
-                <button
+                <motion.button
                   onClick={handleSetAlarm}
+                  whileHover={{ scale: 1.2 }}
+                  className="bg-amber-500 text-white py-3 px-8 rounded-lg text-xl mt-8 hover:bg-amber-700"
+                >
+                  Set Alarm!
+                </motion.button>
+
+                <br/>
+
+                {/* <button
+                  onClick={startAudioProcessing}
                   className="bg-blue-500 text-white py-3 px-8 rounded-lg text-xl mt-8 hover:bg-blue-700"
                 >
-                  Set Alarm
-                </button>
+                  Start Recording
+                </button> */}
+
+                {isPopupVisible && (
+                  <div className="fixed inset-0 bg-gray-800 bg-opacity-50 flex justify-center items-center z-50 bg-red-flash">
+                  <motion.div animate={{
+    y: [0, -60, 0],
+  }} transition={{ repeat: Infinity, duration: 1 }} className="bg-white shadow-lg rounded-2xl p-8 max-w-lg text-center relative">
+                    <button
+                      onClick={stopAlarm}
+                      className="absolute top-2 right-2 text-xl font-bold text-gray-800"
+                    >
+                      X
+                    </button>
+                    <h1 className="text-6xl text-red-600 font-bold mb-4">WAKE UP!</h1>
+                    <img src="/Videos/dog.gif" />
+                    <h1 className="text-6xl text-black font-bold mb-4">Bark as loud as you can!</h1>
+                  </motion.div>
+                </div>
+                )}
+
               </div>
+              <style jsx>{`
+              @keyframes flash-red {
+                0%, 100% { background-color: rgba(255, 0, 0, 0.5); }
+                50% { background-color: rgba(255, 77, 77, 0.5); }
+              }
+              .bg-red-flash { animation: flash-red 1s infinite; }
+            `}</style>
               <audio id="alarm-audio" src="/hnr25_alarm.mp3" preload="auto"></audio>
             </div>
+            
           </div>
         </div>
+
       </div>
     </div>
   );
